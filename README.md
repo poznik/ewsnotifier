@@ -1,6 +1,10 @@
 Notifier Telegram Bot
 =====================
 
+Внимание
+--------
+Чистый **vibecode** на gpt-5.2-codex.
+
 Описание
 --------
 Проект опрашивает Exchange по EWS, кэширует встречи на сегодня и непрочитанные
@@ -101,3 +105,9 @@ services:
 - Команда `/today` доступна только в чатах из `ALLOWED_CHAT_IDS`.
 - При ошибке авторизации в Exchange обновления прекращаются, ошибка остается
   в логах.
+
+Автор
+--------------
+Nikolay Pozharskiy (vibecode)
+pozhny@gmail.com  
+https://github.com/poznik
