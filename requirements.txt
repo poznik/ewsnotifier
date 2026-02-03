@@ -1,0 +1,4 @@
+exchangelib>=5.0.0
+python-telegram-bot>=20.7
+python-dotenv>=1.0.0
+tzdata>=2024.1
