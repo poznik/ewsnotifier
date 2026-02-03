@@ -323,6 +323,7 @@ async def update_loop(
     settings: Settings,
     cache: Cache,
     ews_client: EwsClient,
+    ready_event: asyncio.Event,
 ) -> None:
     logger = logging.getLogger("notifier.update")
     while True:
@@ -379,6 +380,9 @@ async def update_loop(
             cache.meetings = {meeting.id: meeting for meeting in snapshot.meetings}
             cache.mail = {mail.id: mail for mail in snapshot.mails}
 
+        if not ready_event.is_set():
+            ready_event.set()
+
         next_minutes_text = str(next_minutes) if next_minutes is not None else "нет"
         logger.info(
             "Завершено обновление Exchange: будущих встреч %s, до ближайшей %s мин, новых писем %s",
@@ -394,9 +398,12 @@ async def appointment_notify_loop(
     settings: Settings,
     cache: Cache,
     bot: Bot,
+    ready_event: asyncio.Event,
 ) -> None:
     logger = logging.getLogger("notifier.appointment")
     notify_delta = timedelta(seconds=settings.appointment_notify_interval)
+
+    await ready_event.wait()
 
     while True:
         now = datetime.now(timezone.utc)
@@ -443,8 +450,10 @@ async def mail_notify_loop(
     settings: Settings,
     cache: Cache,
     bot: Bot,
+    ready_event: asyncio.Event,
 ) -> None:
     logger = logging.getLogger("notifier.mail")
+    await ready_event.wait()
     while True:
         new_mail: List[MailItem] = []
         async with cache.lock:
@@ -479,12 +488,15 @@ async def agenda_loop(
     settings: Settings,
     cache: Cache,
     bot: Bot,
+    ready_event: asyncio.Event,
 ) -> None:
     if settings.agenda_time is None:
         return
 
     logger = logging.getLogger("notifier.agenda")
     last_sent_date = None
+
+    await ready_event.wait()
 
     while True:
         now_local = datetime.now(settings.local_timezone)
@@ -553,14 +565,22 @@ async def run_async() -> None:
     mail_bot = Bot(token=settings.mail_bot_token, request=request)
     await mail_bot.initialize()
 
+    ready_event = asyncio.Event()
+
     tasks = [
-        asyncio.create_task(update_loop(settings, cache, ews_client)),
-        asyncio.create_task(appointment_notify_loop(settings, cache, appointment_bot)),
-        asyncio.create_task(mail_notify_loop(settings, cache, mail_bot)),
+        asyncio.create_task(update_loop(settings, cache, ews_client, ready_event)),
+        asyncio.create_task(
+            appointment_notify_loop(
+                settings, cache, appointment_bot, ready_event
+            )
+        ),
+        asyncio.create_task(mail_notify_loop(settings, cache, mail_bot, ready_event)),
     ]
     if settings.agenda_time is not None:
         tasks.append(
-            asyncio.create_task(agenda_loop(settings, cache, appointment_bot))
+            asyncio.create_task(
+                agenda_loop(settings, cache, appointment_bot, ready_event)
+            )
         )
 
     stop_event = asyncio.Event()

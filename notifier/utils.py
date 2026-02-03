@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Iterable, Optional
@@ -7,6 +8,11 @@ from zoneinfo import ZoneInfo
 
 
 _URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
+_TEXT_URL_RE = re.compile(r"\[https?://[^\]]+\]|https?://\S+", re.IGNORECASE)
+_HTML_LINEBREAK_RE = re.compile(r"(?is)<br\s*/?>|</p\s*>")
+_HTML_TAG_RE = re.compile(r"(?is)<[^>]+>")
+_CID_RE = re.compile(r"\[cid:[^\]]+\]|cid:[\w.@-]+", re.IGNORECASE)
+_NOISE_LINE_RE = re.compile(r"^\[?(cid|image|img):", re.IGNORECASE)
 _MD_V2_ESCAPE_CHARS = r"_*[]()~`>#+-=|{}.!\\"
 _MD_V2_ESCAPE_TABLE = str.maketrans(
     {ch: f"\\{ch}" for ch in _MD_V2_ESCAPE_CHARS}
@@ -36,8 +42,29 @@ def format_duration(start_utc: datetime, end_utc: datetime) -> str:
     return f"{hours}:{minutes:02d}"
 
 
+def _clean_mail_text(text: str) -> str:
+    cleaned = text.replace("\xa0", " ")
+    if "<" in cleaned and ">" in cleaned:
+        cleaned = _HTML_LINEBREAK_RE.sub("\n", cleaned)
+        cleaned = _HTML_TAG_RE.sub(" ", cleaned)
+        cleaned = html.unescape(cleaned)
+    cleaned = _TEXT_URL_RE.sub(" ", cleaned)
+    cleaned = _CID_RE.sub(" ", cleaned)
+    return cleaned
+
+
 def build_preview(text: str, max_chars: int = 200, max_lines: int = 2) -> str:
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    cleaned = _clean_mail_text(text)
+    lines = []
+    for line in cleaned.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _NOISE_LINE_RE.match(stripped):
+            continue
+        lines.append(stripped)
+        if len(lines) >= max_lines:
+            break
     preview_lines = lines[:max_lines]
     preview = "\n".join(preview_lines)
     if len(preview) > max_chars:
