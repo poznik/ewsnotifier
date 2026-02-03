@@ -161,7 +161,7 @@ def build_mail_message(mail: MailItem, settings: Settings) -> str:
     if preview:
         message = (
             f"*{subject}*\n"
-            f"От: : {sender}\n"
+            f"От: {sender}\n"
             f"Отправлено: {sent}\n\n"
             f"{preview}"
         )

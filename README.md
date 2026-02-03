@@ -113,3 +113,7 @@ services:
 Nikolay Pozharskiy (vibecode)
 pozhny@gmail.com  
 https://github.com/poznik
+
+Лицензия
+--------
+GNU GENERAL PUBLIC LICENSE Version 3
