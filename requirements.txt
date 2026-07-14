@@ -6,7 +6,7 @@ anyio==4.12.1
 cached-property==2.0.1
 certifi==2026.1.4
 cffi==2.0.0
-charset-normalizer==3.4.4
+charset-normalizer==3.4.9
 cryptography==46.0.4
 defusedxml==0.7.1
 dnspython==2.8.0
