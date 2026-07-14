@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import timedelta
 from enum import Enum
 
@@ -47,24 +47,16 @@ def _retry_after_seconds(exc: RetryAfter) -> float:
     return float(delay)
 
 
-async def _send_text(
-    bot: Bot,
-    chat_id: int,
-    text: str,
-    parse_mode: ParseMode | None,
-    reply_markup: InlineKeyboardMarkup | None,
-) -> SendResult:
+async def _deliver(chat_id: int, send: Callable[[], Awaitable[object]]) -> SendResult:
+    """Run one send, classifying every Telegram failure the same way.
+
+    Text and photo differ only in the call itself; the retry policy is shared.
+    """
     network_attempts = 0
     rate_limit_hits = 0
     while True:
         try:
-            await bot.send_message(
-                chat_id=chat_id,
-                text=text,
-                parse_mode=parse_mode,
-                reply_markup=reply_markup,
-                disable_web_page_preview=True,
-            )
+            await send()
             return SendResult.DELIVERED
         except RetryAfter as exc:
             rate_limit_hits += 1
@@ -98,6 +90,43 @@ async def _send_text(
         except Exception:
             _LOGGER.exception("Chat %s: unexpected error while sending", chat_id)
             return SendResult.PERMANENT_FAILURE
+
+
+async def _send_text(
+    bot: Bot,
+    chat_id: int,
+    text: str,
+    parse_mode: ParseMode | None,
+    reply_markup: InlineKeyboardMarkup | None,
+) -> SendResult:
+    return await _deliver(
+        chat_id,
+        lambda: bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+            disable_web_page_preview=True,
+        ),
+    )
+
+
+async def _send_photo(
+    bot: Bot,
+    chat_id: int,
+    photo: bytes,
+    caption: str | None,
+    parse_mode: ParseMode | None,
+) -> SendResult:
+    return await _deliver(
+        chat_id,
+        lambda: bot.send_photo(
+            chat_id=chat_id,
+            photo=photo,
+            caption=caption,
+            parse_mode=parse_mode,
+        ),
+    )
 
 
 async def send_to_chat(
@@ -140,11 +169,9 @@ async def send_to_chats(
     return SendResult.PERMANENT_FAILURE
 
 
-async def send_to_chats_persistent(
-    bot: Bot,
+async def _persistent(
     chat_ids: Iterable[int],
-    text: str,
-    parse_mode: ParseMode | None = None,
+    send: Callable[[int], Awaitable[SendResult]],
 ) -> None:
     """Retry transient failures for a long time (daily agenda, finding B3).
 
@@ -153,7 +180,7 @@ async def send_to_chats_persistent(
     """
     for chat_id in chat_ids:
         for attempt in range(1, PERSISTENT_MAX_ATTEMPTS + 1):
-            result = await send_to_chat(bot, chat_id, text, parse_mode, None)
+            result = await send(chat_id)
             if result is not SendResult.TRANSIENT_FAILURE:
                 break
             if attempt < PERSISTENT_MAX_ATTEMPTS:
@@ -171,6 +198,32 @@ async def send_to_chats_persistent(
                 chat_id,
                 PERSISTENT_MAX_ATTEMPTS,
             )
+
+
+async def send_to_chats_persistent(
+    bot: Bot,
+    chat_ids: Iterable[int],
+    text: str,
+    parse_mode: ParseMode | None = None,
+) -> None:
+    await _persistent(
+        chat_ids,
+        lambda chat_id: send_to_chat(bot, chat_id, text, parse_mode, None),
+    )
+
+
+async def send_photo_to_chats_persistent(
+    bot: Bot,
+    chat_ids: Iterable[int],
+    photo: bytes,
+    caption: str | None = None,
+    parse_mode: ParseMode | None = None,
+) -> None:
+    """The daily agenda as a picture; the caption is what reaches the push."""
+    await _persistent(
+        chat_ids,
+        lambda chat_id: _send_photo(bot, chat_id, photo, caption, parse_mode),
+    )
 
 
 async def send_admin_alert(bot: Bot, settings: Settings, text: str) -> None:

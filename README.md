@@ -14,7 +14,8 @@ unread mail, delivered by two bots.
 - **Meeting bot**: a reminder shortly before each meeting starts, with a
   "join" button when the location contains a meeting link; `/today` (day
   agenda with free windows between meetings) and `/check` (overlapping
-  meetings) commands; an optional daily agenda on weekday mornings.
+  meetings) commands; an optional daily agenda on weekday mornings, drawn as
+  a calendar image with a text caption.
 - **Mail bot**: a message per new unread email with sender, subject and a
   short preview; keyword-triggered mentions (e.g. ping `@nickname` when the
   text contains "urgent").
@@ -92,7 +93,8 @@ at once with the variable name.
 | `MAIL_FETCH_LIMIT` | `100` | Max unread messages fetched per refresh |
 | `KEYWORDS` | — | Comma-separated keywords (whole-word match) that trigger a mention |
 | `MENTION_TEXT` | — | Text appended on keyword match, e.g. `@nickname` |
-| `AGENDA_TIME` | — | `HH:MM` local; send `/today` + `/check` on weekday mornings |
+| `AGENDA_TIME` | — | `HH:MM` local; send the daily agenda on weekday mornings |
+| `AGENDA_FORMAT` | `image` | `image` draws the day as a calendar picture with a caption, `text` keeps the plain-text list |
 | `WORKDAY_START` | `09:00` | Workday start used for the free window before the first meeting |
 | `MASK_PRIVATE_MEETINGS` | `false` | Replace subjects of private meetings with a placeholder |
 | `AUTH_RETRY_INTERVAL` | `1800` | Seconds between retries after an Exchange auth failure |
@@ -110,6 +112,25 @@ mistake:
 | `.env` file | `EWS_USERNAME=DOMAIN\user` | Values are taken literally, no escaping |
 | YAML (`docker-compose.yml`) | `EWS_USERNAME: "DOMAIN\\user"` | YAML processes `\\` into `\` |
 | Shell | `export EWS_USERNAME='DOMAIN\user'` | Single quotes keep it literal |
+
+## The daily agenda
+
+The day arrives as a picture — a vertical timeline the way Outlook draws it:
+the hour scale on the left, block height equal to the meeting's duration,
+overlapping meetings side by side in red, and free windows as the green
+stretches between them, with the largest one called out.
+
+The caption under it carries the digest: date, meeting count, busy and free
+time, and every overlap. That is the part that stays text — it lands in the
+push notification, it is searchable in the chat and a screen reader can read
+it. Overlaps moved into the caption, so the old second message is gone.
+
+If the picture cannot be drawn — a missing font, for instance — the agenda
+falls back to the previous plain-text form rather than going missing. Set
+`AGENDA_FORMAT=text` to keep it that way for good.
+
+`/today` still answers with text: it is the reply you copy names and links out
+of.
 
 ## Behaviour details
 

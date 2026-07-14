@@ -9,6 +9,7 @@ import re
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
+from notifier.agenda import build_day_layout, format_day_title
 from notifier.config import Settings
 from notifier.models import MailItem, Meeting
 from notifier.utils import (
@@ -17,11 +18,16 @@ from notifier.utils import (
     format_duration,
     format_local_dt,
     format_markdown_quote,
+    format_minutes,
+    plural_meetings,
 )
 
 # Telegram rejects messages longer than 4096 characters; we split earlier
 # to leave headroom for the closing of multi-byte sequences and entities.
 MESSAGE_CHUNK_LIMIT = 4000
+
+# Telegram's hard cap on a photo caption.
+CAPTION_LIMIT = 1024
 
 _WHITESPACE_RE = re.compile(r"\s+")
 
@@ -119,6 +125,56 @@ def build_mail_message(mail: MailItem, settings: Settings) -> str:
         else:
             message = f"‼️{message}"
     return message
+
+
+def build_agenda_caption(meetings: Iterable[Meeting], settings: Settings) -> str:
+    """The text under the agenda picture.
+
+    This is the part that survives as text: it lands in the push notification,
+    it is searchable in the chat and a screen reader can read it. Telegram caps
+    a caption at 1024 characters, so it stays a digest — the detail lives in the
+    picture.
+    """
+    layout = build_day_layout(list(meetings), settings)
+    if layout.is_empty:
+        local = datetime.now(settings.local_timezone)
+    else:
+        local = layout.day_start_utc.astimezone(settings.local_timezone)
+
+    lines = [f"📅 *{escape_markdown_v2(format_day_title(local))}*"]
+
+    if layout.is_empty:
+        lines.append(escape_markdown_v2("Встреч нет — день свободен"))
+    else:
+        summary = (
+            f"{plural_meetings(len(layout.timed))} · "
+            f"занято {format_minutes(layout.busy_minutes)} · "
+            f"свободно {format_minutes(layout.free_minutes)}"
+        )
+        lines.append(escape_markdown_v2(summary))
+
+    for overlap in layout.overlaps:
+        start = format_local_dt(overlap.start_utc, settings.local_timezone, with_date=False)
+        end = format_local_dt(overlap.end_utc, settings.local_timezone, with_date=False)
+        detail = (
+            f"Пересечение {start}–{end} ({format_minutes(overlap.minutes)}): "
+            f"{meeting_subject(overlap.first, settings)} × "
+            f"{meeting_subject(overlap.second, settings)}"
+        )
+        lines.append(f"⚠️ {escape_markdown_v2(detail)}")
+
+    for meeting in layout.all_day:
+        lines.append(f"🏖 {escape_markdown_v2('Весь день: ' + meeting_subject(meeting, settings))}")
+
+    caption = "\n".join(lines)
+    if len(caption) > CAPTION_LIMIT:
+        kept: list[str] = []
+        for line in lines:
+            if len("\n".join([*kept, line])) > CAPTION_LIMIT:
+                break
+            kept.append(line)
+        caption = "\n".join(kept)
+    return caption
 
 
 def _window_line(start_utc: datetime, end_utc: datetime, settings: Settings) -> str:

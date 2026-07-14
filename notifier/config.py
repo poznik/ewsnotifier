@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 _VALID_AUTH_TYPES = ("NTLM", "BASIC", "DIGEST")
 _VALID_LOG_LEVELS = ("CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG")
+_VALID_AGENDA_FORMATS = ("image", "text")
 
 
 class ConfigError(ValueError):
@@ -35,6 +36,7 @@ class Settings:
     keywords: list[str]
     mention_text: str
     agenda_time: dt_time | None
+    agenda_format: str
     workday_start: dt_time
     mail_lookback_days: int
     mail_fetch_limit: int
@@ -127,6 +129,15 @@ def _get_auth_type() -> str:
     return value
 
 
+def _get_agenda_format() -> str:
+    value = (os.getenv("AGENDA_FORMAT") or "image").strip().lower()
+    if value not in _VALID_AGENDA_FORMATS:
+        raise ValueError(
+            f"AGENDA_FORMAT: expected one of {', '.join(_VALID_AGENDA_FORMATS)}, got {value!r}"
+        )
+    return value
+
+
 def _get_log_level() -> str:
     value = (os.getenv("LOG_LEVEL") or "INFO").strip().upper()
     if value not in _VALID_LOG_LEVELS:
@@ -183,6 +194,7 @@ def load_settings() -> Settings:
     collect("admin_chat_id", _get_admin_chat_id)
     collect("local_timezone", _get_timezone)
     collect("agenda_time", _get_time, "AGENDA_TIME")
+    collect("agenda_format", _get_agenda_format)
     collect("workday_start", _get_time, "WORKDAY_START", dt_time(hour=9, minute=0))
     collect("mail_lookback_days", _get_int, "MAIL_LOOKBACK_DAYS", 7)
     collect("mail_fetch_limit", _get_int, "MAIL_FETCH_LIMIT", 100)
@@ -211,6 +223,7 @@ def load_settings() -> Settings:
         keywords=_get_list("KEYWORDS"),
         mention_text=os.getenv("MENTION_TEXT", "").strip(),
         agenda_time=values["agenda_time"],  # type: ignore[arg-type]
+        agenda_format=str(values["agenda_format"]),
         workday_start=values["workday_start"],  # type: ignore[arg-type]
         mail_lookback_days=values["mail_lookback_days"],  # type: ignore[arg-type]
         mail_fetch_limit=values["mail_fetch_limit"],  # type: ignore[arg-type]

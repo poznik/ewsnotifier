@@ -12,19 +12,27 @@ from .conftest import make_settings
 
 
 class FakeBot:
-    """Yields the given outcomes (exception => raise) per send_message call."""
+    """Yields the given outcomes (exception => raise) per send call."""
 
     def __init__(self, outcomes):
         self.outcomes = list(outcomes)
         self.calls: list[dict] = []
+        self.photo_calls: list[dict] = []
 
-    async def send_message(self, **kwargs):
-        self.calls.append(kwargs)
+    def _next(self):
         if self.outcomes:
             outcome = self.outcomes.pop(0)
             if isinstance(outcome, Exception):
                 raise outcome
         return None
+
+    async def send_message(self, **kwargs):
+        self.calls.append(kwargs)
+        return self._next()
+
+    async def send_photo(self, **kwargs):
+        self.photo_calls.append(kwargs)
+        return self._next()
 
 
 @pytest.fixture
@@ -109,6 +117,35 @@ class TestChunking:
         assert len(bot.calls) >= 2
         assert all(call["reply_markup"] is None for call in bot.calls[:-1])
         assert bot.calls[-1]["reply_markup"] is markup
+
+
+class TestPhoto:
+    def test_photo_sent_with_caption_to_every_chat(self, no_sleep):
+        bot = FakeBot([])
+        asyncio.run(
+            delivery.send_photo_to_chats_persistent(bot, [1, 2], b"\x89PNG", caption="сводка")
+        )
+        assert [call["chat_id"] for call in bot.photo_calls] == [1, 2]
+        assert all(call["photo"] == b"\x89PNG" for call in bot.photo_calls)
+        assert all(call["caption"] == "сводка" for call in bot.photo_calls)
+
+    def test_photo_flood_control_is_waited_out(self, no_sleep):
+        bot = FakeBot([RetryAfter(3), None])
+        asyncio.run(delivery.send_photo_to_chats_persistent(bot, [1], b"png", caption="c"))
+        assert len(bot.photo_calls) == 2
+        assert any(s >= 3 for s in no_sleep)
+
+    def test_photo_rejected_by_telegram_is_not_retried(self, no_sleep):
+        bot = FakeBot([BadRequest("PHOTO_INVALID_DIMENSIONS")])
+        asyncio.run(delivery.send_photo_to_chats_persistent(bot, [1], b"png", caption="c"))
+        assert len(bot.photo_calls) == 1
+
+    def test_photo_transient_failure_is_retried_across_attempts(self, no_sleep):
+        # one whole send_to_chat worth of network failures, then success
+        outcomes = [TimedOut()] * delivery.NETWORK_RETRIES + [None]
+        bot = FakeBot(outcomes)
+        asyncio.run(delivery.send_photo_to_chats_persistent(bot, [1], b"png"))
+        assert len(bot.photo_calls) == delivery.NETWORK_RETRIES + 1
 
 
 class TestAdminAlert:

@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Daily agenda as a picture
+
+- The weekday morning agenda is now sent as a calendar image with a text
+  caption instead of two plain-text messages. The day is drawn as a vertical
+  timeline: block height is the meeting's duration, overlapping meetings stand
+  in neighbouring lanes and are coloured red, free windows are the green
+  stretches between them, and the largest one is called out. A 15-minute
+  standup and a three-hour workshop no longer look the same.
+- The caption carries the digest — date, meeting count, busy/free time and
+  every overlap — so the text survives where it matters: in the push
+  notification, in chat search and for a screen reader. Overlaps moved into
+  it, and the second (`/check`-style) message is gone.
+- `AGENDA_FORMAT=text` restores the old plain-text agenda without a rebuild.
+  If the image cannot be drawn (a missing font, say), the agenda falls back to
+  text on its own rather than going missing.
+- Day layout (free windows, overlaps, calendar lanes, busy time counted once
+  across overlaps) lives in `notifier/agenda.py` and is unit-tested apart from
+  the renderer; `notifier/agenda_image.py` draws it with Pillow.
+- Photo delivery reuses the existing Telegram retry policy: flood control is
+  waited out, permanent rejections are not retried.
+- The Docker image installs `fonts-dejavu-core` — `python:slim` ships no fonts
+  at all, and without one there is nothing to render Cyrillic with.
+
 ## 1.0.0 — 2026-07-14
 
 First public-ready release. The result of a full architecture and code
