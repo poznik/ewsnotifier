@@ -10,16 +10,19 @@ from datetime import UTC, datetime, timedelta
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 
+from notifier.agenda_image import render_agenda_png
 from notifier.cache import Cache
 from notifier.config import Settings
 from notifier.delivery import (
     SendResult,
     send_admin_alert,
+    send_photo_to_chats_persistent,
     send_to_chats,
     send_to_chats_persistent,
 )
 from notifier.ews_client import EwsClient
 from notifier.formatting import (
+    build_agenda_caption,
     build_check_list,
     build_mail_message,
     build_meeting_message,
@@ -293,6 +296,48 @@ async def mail_notify_loop(
         await asyncio.sleep(settings.mail_refresh_interval)
 
 
+async def _send_agenda(
+    settings: Settings,
+    bot: Bot,
+    meetings: list[Meeting],
+    logger: logging.Logger,
+) -> None:
+    """Picture first, plain text if it cannot be drawn.
+
+    A missing font or a Pillow failure must not cost the user their agenda,
+    so the text version stays as the fallback path.
+    """
+    photo: bytes | None = None
+    if settings.agenda_format == "image":
+        try:
+            photo = render_agenda_png(meetings, settings)
+        except Exception:
+            logger.exception("Could not draw the agenda, falling back to text")
+
+    if photo is not None:
+        await send_photo_to_chats_persistent(
+            bot,
+            settings.allowed_chat_ids,
+            photo,
+            caption=build_agenda_caption(meetings, settings),
+            parse_mode=ParseMode.MARKDOWN_V2,
+        )
+        return
+
+    await send_to_chats_persistent(
+        bot,
+        settings.allowed_chat_ids,
+        build_today_list(meetings, settings),
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
+    await send_to_chats_persistent(
+        bot,
+        settings.allowed_chat_ids,
+        build_check_list(meetings, settings),
+        parse_mode=ParseMode.MARKDOWN_V2,
+    )
+
+
 async def agenda_loop(
     settings: Settings,
     cache: Cache,
@@ -324,21 +369,7 @@ async def agenda_loop(
                 meetings = list(cache.meetings.values())
             if not already_sent and now_local.time() >= settings.agenda_time:
                 logger.info("Sending daily agenda for %s", now_local.strftime("%d.%m.%Y"))
-                today_text = build_today_list(meetings, settings)
-                check_text = build_check_list(meetings, settings)
-
-                await send_to_chats_persistent(
-                    bot,
-                    settings.allowed_chat_ids,
-                    today_text,
-                    parse_mode=ParseMode.MARKDOWN_V2,
-                )
-                await send_to_chats_persistent(
-                    bot,
-                    settings.allowed_chat_ids,
-                    check_text,
-                    parse_mode=ParseMode.MARKDOWN_V2,
-                )
+                await _send_agenda(settings, bot, meetings, logger)
                 async with cache.lock:
                     cache.state.agenda_last_sent = now_local.date()
                     store.save(cache.state)

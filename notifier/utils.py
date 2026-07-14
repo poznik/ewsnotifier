@@ -36,17 +36,32 @@ def format_local_dt(dt_utc: datetime, tz: ZoneInfo, with_date: bool = True) -> s
     return local_dt.strftime("%H:%M")
 
 
-def format_duration(start_utc: datetime, end_utc: datetime) -> str:
-    delta = end_utc - start_utc
-    if delta.total_seconds() < 0:
-        delta = timedelta(0)
-    total_minutes = int(delta.total_seconds() // 60)
-    hours, minutes = divmod(total_minutes, 60)
+def format_minutes(total_minutes: int) -> str:
+    hours, minutes = divmod(max(0, total_minutes), 60)
     if hours and minutes:
         return f"{hours} ч {minutes} мин"
     if hours:
         return f"{hours} ч"
     return f"{minutes} мин"
+
+
+def format_duration(start_utc: datetime, end_utc: datetime) -> str:
+    delta = end_utc - start_utc
+    if delta.total_seconds() < 0:
+        delta = timedelta(0)
+    return format_minutes(int(delta.total_seconds() // 60))
+
+
+def plural_meetings(count: int) -> str:
+    """Russian noun agreement: 1 встреча, 2 встречи, 5 встреч."""
+    if 11 <= count % 100 <= 14:
+        return f"{count} встреч"
+    last = count % 10
+    if last == 1:
+        return f"{count} встреча"
+    if last in (2, 3, 4):
+        return f"{count} встречи"
+    return f"{count} встреч"
 
 
 def _clean_mail_text(text: str) -> str:

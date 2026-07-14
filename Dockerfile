@@ -6,6 +6,12 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# The agenda picture is drawn with Pillow, and slim ships no fonts at all:
+# without DejaVu there is nothing to render Cyrillic with.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt
 

@@ -32,6 +32,7 @@ def make_settings(**overrides) -> Settings:
         keywords=[],
         mention_text="",
         agenda_time=None,
+        agenda_format="image",
         workday_start=dt_time(9, 0),
         mail_lookback_days=7,
         mail_fetch_limit=100,

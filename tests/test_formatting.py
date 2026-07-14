@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from datetime import time as dt_time
 
 from notifier.formatting import (
+    CAPTION_LIMIT,
+    build_agenda_caption,
     build_check_list,
     build_mail_message,
     build_meeting_message,
@@ -110,6 +112,70 @@ class TestBuildTodayList:
         meeting = make_meeting(subject="Собеседование кандидата", is_private=True)
         text = build_today_list([meeting], settings)
         assert "Собеседование кандидата" in text
+
+
+class TestBuildAgendaCaption:
+    def test_summary_line(self):
+        settings = make_settings()
+        meeting = make_meeting(start_utc=_utc(7), end_utc=_utc(8))  # 10:00–11:00 MSK
+        text = build_agenda_caption([meeting], settings)
+        assert "Вторник, 14 июля" in text
+        assert "1 встреча" in text
+        assert "занято 1 ч" in text
+
+    def test_plural_agreement(self):
+        settings = make_settings()
+        meetings = [
+            make_meeting(id="a", start_utc=_utc(7), end_utc=_utc(8)),
+            make_meeting(id="b", start_utc=_utc(9), end_utc=_utc(10)),
+        ]
+        assert "2 встречи" in build_agenda_caption(meetings, settings)
+
+    def test_overlap_is_spelled_out(self):
+        settings = make_settings()
+        first = make_meeting(id="a", subject="Демо", start_utc=_utc(7), end_utc=_utc(8))
+        second = make_meeting(
+            id="b", subject="Интервью", start_utc=_utc(7, 30), end_utc=_utc(8, 30)
+        )
+        text = build_agenda_caption([first, second], settings)
+        assert "Пересечение" in text
+        assert "Демо" in text and "Интервью" in text
+
+    def test_all_day_listed(self):
+        settings = make_settings()
+        all_day = make_meeting(id="ad", subject="Отпуск Пети", is_all_day=True)
+        timed = make_meeting(id="t", start_utc=_utc(7), end_utc=_utc(8))
+        text = build_agenda_caption([all_day, timed], settings)
+        assert "Весь день: Отпуск Пети" in text
+
+    def test_empty_day(self):
+        text = build_agenda_caption([], make_settings())
+        assert "Встреч нет" in text
+
+    def test_private_meeting_masked(self):
+        settings = make_settings(mask_private_meetings=True)
+        first = make_meeting(
+            id="a", subject="Секретное", is_private=True, start_utc=_utc(7), end_utc=_utc(8)
+        )
+        second = make_meeting(id="b", subject="Обычное", start_utc=_utc(7, 30), end_utc=_utc(8, 30))
+        text = build_agenda_caption([first, second], settings)
+        assert "Секретное" not in text
+        assert "Приватная встреча" in text
+
+    def test_caption_never_exceeds_telegram_limit(self):
+        settings = make_settings()
+        # a wall of mutually overlapping meetings: one badge line per pair
+        meetings = [
+            make_meeting(
+                id=f"m{i}",
+                subject=f"Очень длинная тема встречи номер {i} " * 3,
+                start_utc=_utc(7),
+                end_utc=_utc(10),
+            )
+            for i in range(12)
+        ]
+        text = build_agenda_caption(meetings, settings)
+        assert len(text) <= CAPTION_LIMIT
 
 
 class TestFindOverlapsAndCheckList:
