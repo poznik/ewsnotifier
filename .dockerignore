@@ -3,7 +3,14 @@ __pycache__
 *.pyc
 *.pyo
 *.pyd
-.DS_Store
+**/.DS_Store
 .git
 .gitignore
+.github
 README.md
+README.ru.md
+CHANGELOG.md
+tests
+data
+*.log
+*.zip

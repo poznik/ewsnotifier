@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -12,8 +11,10 @@ class Meeting:
     start_utc: datetime
     end_utc: datetime
     organizer: str
-    location: Optional[str]
-    join_url: Optional[str]
+    location: str
+    join_url: str | None
+    is_all_day: bool = False
+    is_private: bool = False
 
 
 @dataclass(frozen=True)

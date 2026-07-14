@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, Set
 
-from notifier.models import Meeting, MailItem
+from notifier.models import MailItem, Meeting
+from notifier.state import NotificationState
 
 
 class Cache:
-    def __init__(self) -> None:
-        self.meetings: Dict[str, Meeting] = {}
-        self.mail: Dict[str, MailItem] = {}
-        self.notified_meetings: Set[str] = set()
-        self.notified_mail: Set[str] = set()
+    """In-memory snapshot of Exchange data plus persistent notification state.
+
+    All fields are read and mutated under ``lock``.
+    """
+
+    def __init__(self, state: NotificationState | None = None) -> None:
+        self.meetings: dict[str, Meeting] = {}
+        self.mail: dict[str, MailItem] = {}
+        self.state = state if state is not None else NotificationState()
         self.lock = asyncio.Lock()

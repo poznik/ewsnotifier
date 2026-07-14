@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import html
 import re
-from datetime import datetime, timedelta, timezone
-from typing import Iterable, Optional
+from collections.abc import Iterable
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-
 
 _URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 _TEXT_URL_RE = re.compile(r"\[https?://[^\]]+\]|https?://\S+", re.IGNORECASE)
@@ -14,16 +13,20 @@ _HTML_TAG_RE = re.compile(r"(?is)<[^>]+>")
 _CID_RE = re.compile(r"\[cid:[^\]]+\]|cid:[\w.@-]+", re.IGNORECASE)
 _NOISE_LINE_RE = re.compile(r"^\[?(cid|image|img):", re.IGNORECASE)
 _MD_V2_ESCAPE_CHARS = r"_*[]()~`>#+-=|{}.!\\"
-_MD_V2_ESCAPE_TABLE = str.maketrans(
-    {ch: f"\\{ch}" for ch in _MD_V2_ESCAPE_CHARS}
-)
+_MD_V2_ESCAPE_TABLE = str.maketrans({ch: f"\\{ch}" for ch in _MD_V2_ESCAPE_CHARS})
+# Punctuation that commonly wraps a URL in calendar locations ("<https://…>",
+# "(https://…)") but is never part of the URL itself.
+_URL_TRAILING_CHARS = ">)]}.,;:!?'\"»…"
 
 
-def extract_url(text: Optional[str]) -> Optional[str]:
+def extract_url(text: str | None) -> str | None:
     if not text:
         return None
     match = _URL_RE.search(text)
-    return match.group(0) if match else None
+    if not match:
+        return None
+    url = match.group(0).rstrip(_URL_TRAILING_CHARS)
+    return url or None
 
 
 def format_local_dt(dt_utc: datetime, tz: ZoneInfo, with_date: bool = True) -> str:
@@ -39,7 +42,11 @@ def format_duration(start_utc: datetime, end_utc: datetime) -> str:
         delta = timedelta(0)
     total_minutes = int(delta.total_seconds() // 60)
     hours, minutes = divmod(total_minutes, 60)
-    return f"{hours}:{minutes:02d}"
+    if hours and minutes:
+        return f"{hours} ч {minutes} мин"
+    if hours:
+        return f"{hours} ч"
+    return f"{minutes} мин"
 
 
 def _clean_mail_text(text: str) -> str:
@@ -87,5 +94,12 @@ def format_markdown_quote(text: str) -> str:
 
 
 def contains_keyword(text: str, keywords: Iterable[str]) -> bool:
-    lowered = text.lower()
-    return any(keyword.lower() in lowered for keyword in keywords)
+    for keyword in keywords:
+        stripped = keyword.strip()
+        if not stripped:
+            continue
+        # Match whole words/phrases only: "ok" must not fire on "broken".
+        pattern = r"(?<!\w)" + re.escape(stripped) + r"(?!\w)"
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+    return False

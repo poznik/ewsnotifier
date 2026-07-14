@@ -3,6 +3,18 @@ services:
     build: .
     container_name: notifier
     restart: unless-stopped
+    # Non-root on purpose: NAS user poznik (uid 1026, gid users=100) owns ./data.
+    user: "1026:100"
+    volumes:
+      - ./data:/data
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Deliberate whitelist (instead of env_file): host environment variables
+    # take precedence, .env is the fallback — matches the documented behaviour.
     environment:
       EWS_SERVER: ${EWS_SERVER}
       EWS_EMAIL: ${EWS_EMAIL}
@@ -14,6 +26,8 @@ services:
       APPOINTMENT_REFRESH_INTERVAL: ${APPOINTMENT_REFRESH_INTERVAL}
       APPOINTMENT_NOTIFY_INTERVAL: ${APPOINTMENT_NOTIFY_INTERVAL}
       MAIL_REFRESH_INTERVAL: ${MAIL_REFRESH_INTERVAL}
+      MAIL_LOOKBACK_DAYS: ${MAIL_LOOKBACK_DAYS}
+      MAIL_FETCH_LIMIT: ${MAIL_FETCH_LIMIT}
       APPOINTMENT_BOT_TOKEN: ${APPOINTMENT_BOT_TOKEN}
       MAIL_BOT_TOKEN: ${MAIL_BOT_TOKEN}
       ALLOWED_CHAT_IDS: ${ALLOWED_CHAT_IDS}
@@ -22,4 +36,8 @@ services:
       KEYWORDS: ${KEYWORDS}
       MENTION_TEXT: ${MENTION_TEXT}
       AGENDA_TIME: ${AGENDA_TIME}
+      WORKDAY_START: ${WORKDAY_START}
+      MASK_PRIVATE_MEETINGS: ${MASK_PRIVATE_MEETINGS}
+      AUTH_RETRY_INTERVAL: ${AUTH_RETRY_INTERVAL}
       LOG_LEVEL: ${LOG_LEVEL}
+      STATE_FILE: /data/state.json

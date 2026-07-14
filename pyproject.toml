@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ewsnotifier"
+version = "1.0.0"
+description = "Exchange (EWS) meetings and unread mail notifications in Telegram"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Nikolay Pozharskiy", email = "pozhny@gmail.com" }]
+dependencies = [
+    "exchangelib>=5.6,<6",
+    "python-telegram-bot[rate-limiter]>=22.6,<23",
+    "python-dotenv>=1.0,<2",
+    "tzdata>=2024.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/poznik/ewsnotifier"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+ewsnotifier = "notifier.app:run"
+
+[tool.setuptools]
+packages = ["notifier"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "UP", # pyupgrade
+    "B",  # bugbear
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = "exchangelib.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    # PTB announces the retry_after int->timedelta migration; both types are handled.
+    "ignore::telegram.warnings.PTBDeprecationWarning",
+]
