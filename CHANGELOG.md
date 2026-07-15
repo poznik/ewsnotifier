@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Clearer meeting messages
+
+- Meeting reminder redesigned. The subject is its own bold first line; the
+  timing collapses to one line — "Через 15 минут · 10:00–11:30 (1 ч 30 мин)" —
+  so the end time is finally there. The full date is gone (the reminder fires
+  minutes before, today), "Через 0 мин" became "Начинается сейчас", and the
+  minute count is now declined ("1 минуту", "2 минуты", "5 минут").
+- The raw join URL was dropped from the reminder body: it only duplicated the
+  "Подключиться" button. Online meetings now show a short place ("📍 Teams",
+  or "📍 Онлайн-встреча") instead of a wall of URL.
+- `/today` rebuilt on the shared day layout: the time range leads each line so
+  the column scans top to bottom, a summary header shows the day at a glance,
+  free windows are marked 🟢 and clashes ⚠️ inline — the same language as the
+  caption under the morning picture.
+- `/check` now shows the exact stretch each pair collides in (e.g.
+  13:00–13:30), not just a count and durations.
+
 ## 1.1.0 — 2026-07-15
 
 ### Daily agenda as a picture

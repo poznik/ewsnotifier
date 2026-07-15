@@ -64,6 +64,18 @@ def plural_meetings(count: int) -> str:
     return f"{count} встреч"
 
 
+def plural_minutes(count: int) -> str:
+    """Accusative case for "через N минут": 1 минуту, 2 минуты, 5 минут."""
+    if 11 <= count % 100 <= 14:
+        return f"{count} минут"
+    last = count % 10
+    if last == 1:
+        return f"{count} минуту"
+    if last in (2, 3, 4):
+        return f"{count} минуты"
+    return f"{count} минут"
+
+
 def _clean_mail_text(text: str) -> str:
     cleaned = text.replace("\xa0", " ")
     if "<" in cleaned and ">" in cleaned:

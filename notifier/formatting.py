@@ -20,6 +20,7 @@ from notifier.utils import (
     format_markdown_quote,
     format_minutes,
     plural_meetings,
+    plural_minutes,
 )
 
 # Telegram rejects messages longer than 4096 characters; we split earlier
@@ -71,6 +72,32 @@ def split_message(text: str, limit: int = MESSAGE_CHUNK_LIMIT) -> list[str]:
     return chunks
 
 
+def _hm(dt: datetime, settings: Settings) -> str:
+    return format_local_dt(dt, settings.local_timezone, with_date=False)
+
+
+def _reminder_lead(minutes_to: int) -> str:
+    if minutes_to <= 0:
+        return "Начинается сейчас"
+    if minutes_to < 60:
+        return f"Через {plural_minutes(minutes_to)}"
+    return f"Через {format_minutes(minutes_to)}"
+
+
+def _place_label(meeting: Meeting) -> str:
+    """Human-readable location without the raw URL.
+
+    "Teams <https://…>" → "Teams"; a bare join URL → "Онлайн-встреча"; the join
+    link itself lives on the button, so it never appears as text here.
+    """
+    text = _WHITESPACE_RE.sub(" ", meeting.location or "").strip()
+    if meeting.join_url:
+        text = text.replace(meeting.join_url, "")
+        text = _WHITESPACE_RE.sub(" ", text).strip(" <>()[]—–·|")
+        return text or "Онлайн-встреча"
+    return text
+
+
 def build_meeting_message(
     meeting: Meeting, settings: Settings, now_utc: datetime | None = None
 ) -> str:
@@ -79,23 +106,17 @@ def build_meeting_message(
     minutes_to = max(0, int((meeting.start_utc - now_utc).total_seconds() // 60))
 
     subject = escape_markdown_v2(meeting_subject(meeting, settings))
-    organizer_raw = normalize_subject(meeting.organizer) if meeting.organizer.strip() else "-"
-    organizer = escape_markdown_v2(organizer_raw)
-    start_local_dt = meeting.start_utc.astimezone(settings.local_timezone)
-    start_local = escape_markdown_v2(start_local_dt.strftime("%d.%m.%Y %H:%M"))
-    duration = escape_markdown_v2(format_duration(meeting.start_utc, meeting.end_utc))
-    header = f"🔔 Через {minutes_to} мин: {subject}"
-    lines = [
-        f"*{header}*",
-        f"Организатор: *{organizer}*",
-        f"Начало: {start_local}",
-        f"Длительность: {duration}",
-    ]
-    location_value = (meeting.location or "").strip()
-    if meeting.join_url:
-        lines.append(f"Ссылка: {escape_markdown_v2(meeting.join_url)}")
-    elif location_value:
-        lines.append(f"Место: {escape_markdown_v2(normalize_subject(location_value))}")
+    span = f"{_hm(meeting.start_utc, settings)}–{_hm(meeting.end_utc, settings)}"
+    duration = format_duration(meeting.start_utc, meeting.end_utc)
+    timing = f"{_reminder_lead(minutes_to)} · {span} ({duration})"
+    lines = [f"🔔 *{subject}*", escape_markdown_v2(timing)]
+
+    organizer = normalize_subject(meeting.organizer) if meeting.organizer.strip() else ""
+    if organizer:
+        lines.append(f"👤 {escape_markdown_v2(organizer)}")
+    place = _place_label(meeting)
+    if place:
+        lines.append(f"📍 {escape_markdown_v2(place)}")
     return "\n".join(lines)
 
 
@@ -177,132 +198,82 @@ def build_agenda_caption(meetings: Iterable[Meeting], settings: Settings) -> str
     return caption
 
 
-def _window_line(start_utc: datetime, end_utc: datetime, settings: Settings) -> str:
-    window_start = format_local_dt(start_utc, settings.local_timezone, with_date=False)
-    window_duration = format_duration(start_utc, end_utc)
-    window_rest = f": начало {window_start}, длительность {window_duration}"
-    return f"> *Окно*{escape_markdown_v2(window_rest)}"
+def _plural_overlaps(count: int) -> str:
+    if 11 <= count % 100 <= 14:
+        return f"{count} пересечений"
+    last = count % 10
+    if last == 1:
+        return f"{count} пересечение"
+    if last in (2, 3, 4):
+        return f"{count} пересечения"
+    return f"{count} пересечений"
 
 
 def build_today_list(meetings: Iterable[Meeting], settings: Settings) -> str:
-    today_local = datetime.now(settings.local_timezone)
-    header = f"*Сегодня {escape_markdown_v2(today_local.strftime('%d.%m.%Y'))}*"
-    lines = [header, ""]
+    """The day as a scannable timeline: time first, windows and clashes inline.
 
-    all_day = sorted(
-        (m for m in meetings if m.is_all_day),
-        key=lambda item: meeting_subject(item, settings),
-    )
-    timed = sorted(
-        (m for m in meetings if not m.is_all_day),
-        key=lambda item: item.start_utc,
-    )
-
-    if not all_day and not timed:
-        lines.append(escape_markdown_v2("Встреч нет"))
-        return "\n".join(lines)
-
-    for meeting in all_day:
-        lines.append(escape_markdown_v2(f"◦ Весь день: {meeting_subject(meeting, settings)}"))
-
-    if timed:
-        first_local = timed[0].start_utc.astimezone(settings.local_timezone)
-        workday_start = first_local.replace(
-            hour=settings.workday_start.hour,
-            minute=settings.workday_start.minute,
-            second=0,
-            microsecond=0,
-        )
-        if workday_start < first_local:
-            lines.append(
-                _window_line(
-                    workday_start.astimezone(UTC),
-                    timed[0].start_utc,
-                    settings,
-                )
-            )
-    for index, meeting in enumerate(timed):
-        subject = meeting_subject(meeting, settings)
-        start = format_local_dt(meeting.start_utc, settings.local_timezone, with_date=False)
-        duration = format_duration(meeting.start_utc, meeting.end_utc)
-        lines.append(escape_markdown_v2(f"‣{subject}, {start}, {duration}"))
-        if index < len(timed) - 1:
-            next_meeting = timed[index + 1]
-            if meeting.end_utc < next_meeting.start_utc:
-                lines.append(_window_line(meeting.end_utc, next_meeting.start_utc, settings))
-    return "\n".join(lines)
-
-
-def _overlap_minutes(group: list[Meeting]) -> int:
-    events: list[tuple[datetime, int]] = []
-    for meeting in group:
-        if meeting.end_utc <= meeting.start_utc:
-            continue
-        events.append((meeting.start_utc, 1))
-        events.append((meeting.end_utc, -1))
-    events.sort(key=lambda item: (item[0], item[1]))
-
-    active = 0
-    last_time: datetime | None = None
-    overlap_seconds = 0.0
-    for moment, delta in events:
-        if last_time is not None and active >= 2:
-            overlap_seconds += (moment - last_time).total_seconds()
-        active += delta
-        last_time = moment
-    return max(0, int(overlap_seconds // 60))
-
-
-def find_overlaps(meetings: Iterable[Meeting]) -> list[list[Meeting]]:
-    """Group timed meetings into clusters that overlap in time.
-
-    All-day events are ignored: they would trivially "overlap" the whole
-    day (audit finding C1).
+    Reads the same DayLayout the agenda picture does, so /today speaks the same
+    visual language as the caption under the morning image.
     """
-    timed = sorted(
-        (m for m in meetings if not m.is_all_day),
-        key=lambda item: item.start_utc,
-    )
-    overlaps: list[list[Meeting]] = []
-    current_group: list[Meeting] = []
-    current_end: datetime | None = None
+    layout = build_day_layout(list(meetings), settings)
 
-    for meeting in timed:
-        if not current_group:
-            current_group = [meeting]
-            current_end = meeting.end_utc
-            continue
-        if current_end is not None and meeting.start_utc < current_end:
-            current_group.append(meeting)
-            if meeting.end_utc > current_end:
-                current_end = meeting.end_utc
-        else:
-            if len(current_group) > 1:
-                overlaps.append(current_group)
-            current_group = [meeting]
-            current_end = meeting.end_utc
+    if layout.is_empty and not layout.all_day:
+        tail = escape_markdown_v2("— встреч нет, день свободен")
+        return f"📅 *{escape_markdown_v2('Сегодня')}* {tail}"
 
-    if len(current_group) > 1:
-        overlaps.append(current_group)
-    return overlaps
+    if layout.timed:
+        tail = (
+            f"{plural_meetings(len(layout.timed))} · "
+            f"занято {format_minutes(layout.busy_minutes)} · "
+            f"свободно {format_minutes(layout.free_minutes)}"
+        )
+        head = f"📅 *{escape_markdown_v2('Сегодня')}* · {escape_markdown_v2(tail)}"
+    else:
+        head = f"📅 *{escape_markdown_v2('Сегодня')}*"
+    lines = [head, ""]
+
+    for meeting in layout.all_day:
+        lines.append("🏖 " + escape_markdown_v2(f"Весь день: {meeting_subject(meeting, settings)}"))
+    if layout.all_day and layout.timed:
+        lines.append("")
+
+    biggest = layout.biggest_gap
+    rows: list[tuple[datetime, str]] = []
+    for gap in layout.gaps:
+        mark = ""
+        if biggest is not None and gap.start_utc == biggest.start_utc and len(layout.gaps) > 1:
+            mark = "  ← самое большое"
+        span = f"{_hm(gap.start_utc, settings)}–{_hm(gap.end_utc, settings)}"
+        label = f"{span} · свободно {format_minutes(gap.minutes)}{mark}"
+        rows.append((gap.start_utc, "🟢 " + escape_markdown_v2(label)))
+    for meeting in layout.timed:
+        rng = f"{_hm(meeting.start_utc, settings)}–{_hm(meeting.end_utc, settings)}"
+        clash = " ⚠️" if layout.clashes(meeting) else ""
+        subject = escape_markdown_v2(meeting_subject(meeting, settings))
+        rows.append((meeting.start_utc, f"*{escape_markdown_v2(rng)}*  {subject}{clash}"))
+    for _, text in sorted(rows, key=lambda item: item[0]):
+        lines.append(text)
+    return "\n".join(lines)
 
 
 def build_check_list(meetings: Iterable[Meeting], settings: Settings) -> str:
-    overlaps = find_overlaps(meetings)
+    """Overlapping meetings, each pair with the exact stretch they collide in."""
+    layout = build_day_layout(list(meetings), settings)
+    overlaps = layout.overlaps
 
-    header = escape_markdown_v2(f"Всего пересечений: {len(overlaps)}\n")
-    lines = [header]
+    if not overlaps:
+        return "✅ " + escape_markdown_v2("Пересечений нет")
 
-    for index, group in enumerate(overlaps, start=1):
-        title = escape_markdown_v2(f"Пересечение {index}:")
-        minutes_text = escape_markdown_v2(f"{_overlap_minutes(group)} мин")
-        lines.append(f"*{title}* {minutes_text}")
-        for meeting in group:
-            subject = meeting_subject(meeting, settings)
-            start = format_local_dt(meeting.start_utc, settings.local_timezone, with_date=False)
-            duration = format_duration(meeting.start_utc, meeting.end_utc)
-            lines.append(escape_markdown_v2(f"{subject}, {start}, {duration}"))
-        if index < len(overlaps):
-            lines.append("")
-
-    return "\n".join(lines)
+    lines = [f"⚠️ *{escape_markdown_v2(_plural_overlaps(len(overlaps)))}*", ""]
+    for overlap in overlaps:
+        rng = f"{_hm(overlap.start_utc, settings)}–{_hm(overlap.end_utc, settings)}"
+        minutes = escape_markdown_v2(f"({format_minutes(overlap.minutes)}):")
+        lines.append(f"*{escape_markdown_v2(rng)}* {minutes}")
+        for meeting in (overlap.first, overlap.second):
+            item = (
+                f"{_hm(meeting.start_utc, settings)}–{_hm(meeting.end_utc, settings)}  "
+                f"{meeting_subject(meeting, settings)}"
+            )
+            lines.append("  • " + escape_markdown_v2(item))
+        lines.append("")
+    return "\n".join(lines).rstrip()

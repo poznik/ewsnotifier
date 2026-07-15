@@ -9,6 +9,9 @@ from notifier.utils import (
     extract_url,
     format_duration,
     format_markdown_quote,
+    format_minutes,
+    plural_meetings,
+    plural_minutes,
 )
 
 
@@ -69,6 +72,36 @@ class TestFormatDuration:
     def test_negative_clamped(self):
         start, end = self._dt(30)
         assert format_duration(end, start) == "0 мин"
+
+
+class TestFormatMinutes:
+    def test_minutes_only(self):
+        assert format_minutes(45) == "45 мин"
+
+    def test_hours_and_minutes(self):
+        assert format_minutes(150) == "2 ч 30 мин"
+
+    def test_negative_clamped(self):
+        assert format_minutes(-5) == "0 мин"
+
+
+class TestPluralMeetings:
+    def test_agreement(self):
+        assert plural_meetings(1) == "1 встреча"
+        assert plural_meetings(2) == "2 встречи"
+        assert plural_meetings(5) == "5 встреч"
+        assert plural_meetings(11) == "11 встреч"  # teens are all "встреч"
+        assert plural_meetings(21) == "21 встреча"
+
+
+class TestPluralMinutes:
+    def test_agreement(self):
+        assert plural_minutes(1) == "1 минуту"
+        assert plural_minutes(2) == "2 минуты"
+        assert plural_minutes(5) == "5 минут"
+        assert plural_minutes(11) == "11 минут"
+        assert plural_minutes(21) == "21 минуту"
+        assert plural_minutes(43) == "43 минуты"
 
 
 class TestContainsKeyword:
