@@ -10,7 +10,6 @@ from notifier.formatting import (
     build_mail_message,
     build_meeting_message,
     build_today_list,
-    find_overlaps,
     normalize_subject,
     split_message,
 )
@@ -55,35 +54,61 @@ class TestBuildTodayList:
     def test_empty_day(self):
         settings = make_settings()
         text = build_today_list([], settings)
-        assert "Встреч нет" in text
+        assert "встреч нет" in text
 
     def test_no_carriage_returns(self):
         settings = make_settings()
         text = build_today_list([make_meeting()], settings)
         assert "\r" not in text
 
-    def test_window_before_first_meeting_uses_workday_start(self):
+    def test_time_range_precedes_subject(self):
+        # the whole point of the refresh: time first, so the column lines up
         settings = make_settings()
-        # 10:00–11:00 MSK
+        meeting = make_meeting(start_utc=_utc(7), end_utc=_utc(8))  # 10:00–11:00 MSK
+        text = build_today_list([meeting], settings)
+        line = next(ln for ln in text.split("\n") if "Планёрка" in ln)
+        assert line.index("10:00") < line.index("Планёрка")
+        assert "10:00–11:00" in text
+
+    def test_summary_header(self):
+        settings = make_settings()
+        meetings = [
+            make_meeting(id="a", start_utc=_utc(7), end_utc=_utc(8)),
+            make_meeting(id="b", start_utc=_utc(9), end_utc=_utc(10)),
+        ]
+        text = build_today_list(meetings, settings)
+        assert "Сегодня" in text
+        assert "2 встречи" in text
+        assert "занято" in text
+
+    def test_free_window_before_first_meeting(self):
+        settings = make_settings()
+        # 10:00–11:00 MSK, workday starts 09:00 → free 09:00–10:00
         meeting = make_meeting(start_utc=_utc(7), end_utc=_utc(8))
         text = build_today_list([meeting], settings)
-        assert "начало 09:00" in text
-        assert "1 ч" in text
+        assert "09:00–10:00" in text
+        assert "свободно 1 ч" in text
 
-    def test_window_respects_custom_workday_start(self):
+    def test_free_window_respects_custom_workday_start(self):
         settings = make_settings(workday_start=dt_time(8, 0))
         meeting = make_meeting(start_utc=_utc(7), end_utc=_utc(8))
         text = build_today_list([meeting], settings)
-        assert "начало 08:00" in text
-        assert "2 ч" in text
+        assert "08:00–10:00" in text
+        assert "свободно 2 ч" in text
 
     def test_gap_between_meetings(self):
         settings = make_settings()
         first = make_meeting(id="a", start_utc=_utc(6), end_utc=_utc(7))
         second = make_meeting(id="b", start_utc=_utc(8), end_utc=_utc(9))
         text = build_today_list([first, second], settings)
-        # gap 10:00–11:00 MSK
-        assert "начало 10:00" in text
+        assert "10:00–11:00" in text  # gap 10:00–11:00 MSK
+
+    def test_clash_marked_in_schedule(self):
+        settings = make_settings()
+        first = make_meeting(id="a", subject="Демо", start_utc=_utc(7), end_utc=_utc(8))
+        second = make_meeting(id="b", subject="Собес", start_utc=_utc(7, 30), end_utc=_utc(8, 30))
+        text = build_today_list([first, second], settings)
+        assert "⚠️" in text
 
     def test_all_day_listed_separately(self):
         settings = make_settings()
@@ -98,7 +123,7 @@ class TestBuildTodayList:
         text = build_today_list([all_day, timed], settings)
         assert "Весь день: Отпуск Пети" in text
         # the all-day entry must not поглотить окно до первой обычной встречи
-        assert "начало 09:00" in text
+        assert "09:00–10:00" in text
 
     def test_private_meeting_masked(self):
         settings = make_settings(mask_private_meetings=True)
@@ -178,21 +203,31 @@ class TestBuildAgendaCaption:
         assert len(text) <= CAPTION_LIMIT
 
 
-class TestFindOverlapsAndCheckList:
-    def test_no_overlaps_back_to_back(self):
-        first = make_meeting(id="a", start_utc=_utc(7), end_utc=_utc(8))
-        second = make_meeting(id="b", start_utc=_utc(8), end_utc=_utc(9))
-        assert find_overlaps([first, second]) == []
+class TestBuildCheckList:
+    def test_no_overlaps_message(self):
+        settings = make_settings()
+        text = build_check_list([], settings)
+        assert "Пересечений нет" in text
 
-    def test_overlap_detected_with_minutes(self):
+    def test_back_to_back_has_no_overlap(self):
         settings = make_settings()
         first = make_meeting(id="a", start_utc=_utc(7), end_utc=_utc(8))
-        second = make_meeting(id="b", start_utc=_utc(7, 30), end_utc=_utc(8, 30))
+        second = make_meeting(id="b", start_utc=_utc(8), end_utc=_utc(9))
         text = build_check_list([first, second], settings)
-        assert "Всего пересечений: 1" in text
-        assert "30 мин" in text
+        assert "Пересечений нет" in text
 
-    def test_all_day_excluded_from_overlaps(self):
+    def test_overlap_shows_stretch_and_minutes(self):
+        settings = make_settings()
+        first = make_meeting(id="a", subject="Демо", start_utc=_utc(7), end_utc=_utc(8))
+        second = make_meeting(id="b", subject="Собес", start_utc=_utc(7, 30), end_utc=_utc(8, 30))
+        text = build_check_list([first, second], settings)
+        assert "1 пересечение" in text
+        assert "10:30–11:00" in text  # the exact collision stretch, MSK
+        assert "30 мин" in text
+        assert "Демо" in text and "Собес" in text
+
+    def test_all_day_excluded(self):
+        settings = make_settings()
         all_day = make_meeting(
             id="ad",
             start_utc=datetime(2026, 7, 13, 21, 0, tzinfo=UTC),
@@ -201,52 +236,92 @@ class TestFindOverlapsAndCheckList:
         )
         first = make_meeting(id="a", start_utc=_utc(7), end_utc=_utc(8))
         second = make_meeting(id="b", start_utc=_utc(9), end_utc=_utc(10))
-        assert find_overlaps([all_day, first, second]) == []
+        text = build_check_list([all_day, first, second], settings)
+        assert "Пересечений нет" in text
 
-    def test_zero_overlaps_message(self):
+    def test_three_way_overlap_lists_pairs(self):
+        # a:10–12, b:11–13, c:12:30–14 → pairs a-b and b-c (a and c don't touch)
         settings = make_settings()
-        text = build_check_list([], settings)
-        assert "Всего пересечений: 0" in text
-
-    def test_three_way_overlap_chain(self):
-        # a: 10-12, b: 11-13, c: 12:30-14 — одна группа из трёх
         a = make_meeting(id="a", start_utc=_utc(7), end_utc=_utc(9))
         b = make_meeting(id="b", start_utc=_utc(8), end_utc=_utc(10))
         c = make_meeting(id="c", start_utc=_utc(9, 30), end_utc=_utc(11))
-        groups = find_overlaps([a, b, c])
-        assert len(groups) == 1
-        assert [m.id for m in groups[0]] == ["a", "b", "c"]
+        text = build_check_list([a, b, c], settings)
+        assert "2 пересечения" in text
 
 
 class TestBuildMeetingMessage:
-    def test_subject_newline_normalized(self):
+    def test_subject_is_the_first_line(self):
         settings = make_settings()
         meeting = make_meeting(subject="Строка1\nСтрока2")
         text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
         first_line = text.split("\n")[0]
         assert "Строка1 Строка2" in first_line
+        assert first_line.startswith("🔔")
 
-    def test_minutes_and_duration(self):
+    def test_reminder_lead_and_time_range(self):
         settings = make_settings()
-        meeting = make_meeting(start_utc=_utc(7), end_utc=_utc(8, 30))
+        meeting = make_meeting(start_utc=_utc(7), end_utc=_utc(8, 30))  # 10:00–11:30 MSK
         text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
-        assert "Через 15 мин" in text
+        assert "Через 15 минут" in text
+        assert "10:00–11:30" in text
         assert "1 ч 30 мин" in text
 
-    def test_join_url_line(self):
+    def test_minute_plural_agreement(self):
+        settings = make_settings()
+        meeting = make_meeting(start_utc=_utc(7), end_utc=_utc(8))
+        assert "Через 1 минуту" in build_meeting_message(meeting, settings, now_utc=_utc(6, 59))
+        assert "Через 2 минуты" in build_meeting_message(meeting, settings, now_utc=_utc(6, 58))
+        assert "Через 5 минут " in build_meeting_message(meeting, settings, now_utc=_utc(6, 55))
+
+    def test_starts_now(self):
+        settings = make_settings()
+        meeting = make_meeting(start_utc=_utc(7), end_utc=_utc(8))
+        text = build_meeting_message(meeting, settings, now_utc=_utc(7))
+        assert "Начинается сейчас" in text
+
+    def test_no_date_in_message(self):
+        # the full date was noise: the reminder fires minutes before, today
+        settings = make_settings()
+        meeting = make_meeting(start_utc=_utc(7), end_utc=_utc(8))
+        text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
+        assert "2026" not in text
+
+    def test_online_place_without_raw_url(self):
         settings = make_settings()
         meeting = make_meeting(
             location="Teams <https://teams.example.com/j/1>",
             join_url="https://teams.example.com/j/1",
         )
         text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
-        assert "Ссылка:" in text
+        assert "📍 Teams" in text
+        # the raw URL is on the button, never as text
+        assert "teams.example.com" not in text
 
-    def test_location_fallback(self):
+    def test_online_place_falls_back_to_generic(self):
+        settings = make_settings()
+        meeting = make_meeting(location="https://z.io/x", join_url="https://z.io/x")
+        text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
+        # "-" is a MarkdownV2 special char, so it is escaped in the output
+        assert "Онлайн\\-встреча" in text
+        assert "z.io" not in text
+
+    def test_location_shown_with_pin(self):
         settings = make_settings()
         meeting = make_meeting(location="Переговорка 5")
         text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
-        assert "Место: Переговорка 5" in text
+        assert "📍 Переговорка 5" in text
+
+    def test_no_place_line_when_nothing(self):
+        settings = make_settings()
+        meeting = make_meeting(location="", join_url=None)
+        text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
+        assert "📍" not in text
+
+    def test_organizer_shown(self):
+        settings = make_settings()
+        meeting = make_meeting(organizer="Иван Иванов")
+        text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
+        assert "👤 Иван Иванов" in text
 
 
 class TestBuildMailMessage:
