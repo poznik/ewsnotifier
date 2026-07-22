@@ -9,9 +9,10 @@
   so the end time is finally there. The full date is gone (the reminder fires
   minutes before, today), "Через 0 мин" became "Начинается сейчас", and the
   minute count is now declined ("1 минуту", "2 минуты", "5 минут").
-- The raw join URL was dropped from the reminder body: it only duplicated the
-  "Подключиться" button. Online meetings now show a short place ("📍 Teams",
-  or "📍 Онлайн-встреча") instead of a wall of URL.
+- The reminder no longer prints the join link as a wall of raw URL. The place
+  is a tidy inline link instead — "📍 [Teams](…)" (or "📍 [Онлайн-встреча](…)")
+  — so the link stays in the text (copyable, searchable, survives forwarding)
+  without the unreadable URL. The "Подключиться" button stays for a quick tap.
 - `/today` rebuilt on the shared day layout: the time range leads each line so
   the column scans top to bottom, a summary header shows the day at a glance,
   free windows are marked 🟢 and clashes ⚠️ inline — the same language as the

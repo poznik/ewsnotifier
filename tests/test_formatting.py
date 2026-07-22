@@ -286,30 +286,39 @@ class TestBuildMeetingMessage:
         text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
         assert "2026" not in text
 
-    def test_online_place_without_raw_url(self):
+    def test_online_place_is_a_clickable_link(self):
         settings = make_settings()
         meeting = make_meeting(
             location="Teams <https://teams.example.com/j/1>",
             join_url="https://teams.example.com/j/1",
         )
         text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
-        assert "📍 Teams" in text
-        # the raw URL is on the button, never as text
-        assert "teams.example.com" not in text
+        # the place name links to the meeting; the URL lives in the text now
+        assert "📍 [Teams](https://teams.example.com/j/1)" in text
 
-    def test_online_place_falls_back_to_generic(self):
+    def test_online_generic_place_is_still_a_link(self):
         settings = make_settings()
         meeting = make_meeting(location="https://z.io/x", join_url="https://z.io/x")
         text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
-        # "-" is a MarkdownV2 special char, so it is escaped in the output
-        assert "Онлайн\\-встреча" in text
-        assert "z.io" not in text
+        # "-" is a MarkdownV2 special char, escaped in the label but not the URL
+        assert "[Онлайн\\-встреча](https://z.io/x)" in text
 
-    def test_location_shown_with_pin(self):
+    def test_link_url_escapes_only_paren_and_backslash(self):
+        settings = make_settings()
+        meeting = make_meeting(
+            location="Комната",
+            join_url="https://x.io/meet(room1)?id=42",
+        )
+        text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
+        # closing paren escaped so it does not end the link; the rest untouched
+        assert "[Комната](https://x.io/meet(room1\\)?id=42)" in text
+
+    def test_physical_location_is_not_a_link(self):
         settings = make_settings()
         meeting = make_meeting(location="Переговорка 5")
         text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
         assert "📍 Переговорка 5" in text
+        assert "](" not in text  # no markdown link when there is no join URL
 
     def test_no_place_line_when_nothing(self):
         settings = make_settings()
