@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.1 — 2026-07-22
 
 - Online meeting with only a join link now shows the meeting's domain
   ("📍 nexign.ktalk.ru") instead of a generic "Онлайн-встреча", so you can tell
