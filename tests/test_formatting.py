@@ -296,12 +296,22 @@ class TestBuildMeetingMessage:
         # the place name links to the meeting; the URL lives in the text now
         assert "📍 [Teams](https://teams.example.com/j/1)" in text
 
-    def test_online_generic_place_is_still_a_link(self):
+    def test_bare_url_labelled_by_host(self):
+        # location is just the join link → show the meeting's domain, not a generic word
         settings = make_settings()
-        meeting = make_meeting(location="https://z.io/x", join_url="https://z.io/x")
+        url = "https://nexign.ktalk.ru/BSS_Project_Status"
+        meeting = make_meeting(location=url, join_url=url)
         text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
-        # "-" is a MarkdownV2 special char, escaped in the label but not the URL
-        assert "[Онлайн\\-встреча](https://z.io/x)" in text
+        # dots in the host are MarkdownV2 special chars → escaped in the label
+        assert f"📍 [nexign\\.ktalk\\.ru]({url})" in text
+
+    def test_host_label_drops_www(self):
+        settings = make_settings()
+        url = "https://www.trueconf.nexign.com/r/42"
+        meeting = make_meeting(location=url, join_url=url)
+        text = build_meeting_message(meeting, settings, now_utc=_utc(6, 45))
+        # label drops the www.; the URL keeps it untouched
+        assert f"[trueconf\\.nexign\\.com]({url})" in text
 
     def test_link_url_escapes_only_paren_and_backslash(self):
         settings = make_settings()

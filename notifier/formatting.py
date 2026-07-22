@@ -22,6 +22,7 @@ from notifier.utils import (
     format_minutes,
     plural_meetings,
     plural_minutes,
+    url_host,
 )
 
 # Telegram rejects messages longer than 4096 characters; we split earlier
@@ -88,14 +89,16 @@ def _reminder_lead(minutes_to: int) -> str:
 def _place_label(meeting: Meeting) -> str:
     """Human-readable location without the raw URL.
 
-    "Teams <https://…>" → "Teams"; a bare join URL → "Онлайн-встреча"; the join
-    link itself lives on the button, so it never appears as text here.
+    "Teams <https://…>" → "Teams"; a bare join URL falls back to its host
+    ("https://nexign.ktalk.ru/x" → "nexign.ktalk.ru"), or "Онлайн-встреча" when
+    no host can be parsed. The link itself lives in the inline link and on the
+    button, never as raw text here.
     """
     text = _WHITESPACE_RE.sub(" ", meeting.location or "").strip()
     if meeting.join_url:
         text = text.replace(meeting.join_url, "")
         text = _WHITESPACE_RE.sub(" ", text).strip(" <>()[]—–·|")
-        return text or "Онлайн-встреча"
+        return text or url_host(meeting.join_url) or "Онлайн-встреча"
     return text
 
 

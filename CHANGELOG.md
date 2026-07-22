@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Online meeting with only a join link now shows the meeting's domain
+  ("📍 nexign.ktalk.ru") instead of a generic "Онлайн-встреча", so you can tell
+  Ktalk from TrueConf from Teams at a glance. Falls back to "Онлайн-встреча"
+  only when no host can be parsed.
+
 ## 1.2.0 — 2026-07-16
 
 ### Clearer meeting messages
