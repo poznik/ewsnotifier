@@ -15,6 +15,7 @@ from notifier.models import MailItem, Meeting
 from notifier.utils import (
     contains_keyword,
     escape_markdown_v2,
+    escape_markdown_v2_url,
     format_duration,
     format_local_dt,
     format_markdown_quote,
@@ -116,7 +117,12 @@ def build_meeting_message(
         lines.append(f"👤 {escape_markdown_v2(organizer)}")
     place = _place_label(meeting)
     if place:
-        lines.append(f"📍 {escape_markdown_v2(place)}")
+        label = escape_markdown_v2(place)
+        # Online meetings: keep the join link in the text as a tidy inline link,
+        # so it survives forwarding and can be copied — the button cannot.
+        if meeting.join_url:
+            label = f"[{label}]({escape_markdown_v2_url(meeting.join_url)})"
+        lines.append(f"📍 {label}")
     return "\n".join(lines)
 
 

@@ -110,6 +110,15 @@ def escape_markdown_v2(text: str) -> str:
     return text.translate(_MD_V2_ESCAPE_TABLE)
 
 
+def escape_markdown_v2_url(url: str) -> str:
+    """Escape a URL for the ``(...)`` part of a MarkdownV2 inline link.
+
+    Only ``)`` and ``\\`` are special there — running a URL through the full
+    ``escape_markdown_v2`` would escape ``.``/``-``/``_`` and break the link.
+    """
+    return url.replace("\\", "\\\\").replace(")", "\\)")
+
+
 def format_markdown_quote(text: str) -> str:
     if not text:
         return ""

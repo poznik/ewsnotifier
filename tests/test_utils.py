@@ -6,6 +6,7 @@ from notifier.utils import (
     build_preview,
     contains_keyword,
     escape_markdown_v2,
+    escape_markdown_v2_url,
     extract_url,
     format_duration,
     format_markdown_quote,
@@ -24,6 +25,18 @@ class TestEscapeMarkdownV2:
 
     def test_plain_text_unchanged(self):
         assert escape_markdown_v2("Привет мир") == "Привет мир"
+
+
+class TestEscapeMarkdownV2Url:
+    def test_dots_dashes_underscores_left_intact(self):
+        url = "https://teams.microsoft.com/l/meetup-join/19%3ameeting_x@thread.v2/0"
+        assert escape_markdown_v2_url(url) == url
+
+    def test_closing_paren_escaped(self):
+        assert escape_markdown_v2_url("https://x.io/a(b)c") == "https://x.io/a(b\\)c"
+
+    def test_backslash_escaped(self):
+        assert escape_markdown_v2_url("https://x.io/a\\b") == "https://x.io/a\\\\b"
 
 
 class TestExtractUrl:
