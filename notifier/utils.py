@@ -4,6 +4,7 @@ import html
 import re
 from collections.abc import Iterable
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 _URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
@@ -27,6 +28,17 @@ def extract_url(text: str | None) -> str | None:
         return None
     url = match.group(0).rstrip(_URL_TRAILING_CHARS)
     return url or None
+
+
+def url_host(url: str) -> str | None:
+    """Hostname of a URL for display: ``https://nexign.ktalk.ru/x`` → ``nexign.ktalk.ru``.
+
+    Returns ``None`` when no host can be parsed (e.g. a scheme-less string).
+    """
+    host = urlparse(url).hostname
+    if not host:
+        return None
+    return host.removeprefix("www.")
 
 
 def format_local_dt(dt_utc: datetime, tz: ZoneInfo, with_date: bool = True) -> str:

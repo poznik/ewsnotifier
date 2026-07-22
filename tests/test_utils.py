@@ -13,6 +13,7 @@ from notifier.utils import (
     format_minutes,
     plural_meetings,
     plural_minutes,
+    url_host,
 )
 
 
@@ -37,6 +38,19 @@ class TestEscapeMarkdownV2Url:
 
     def test_backslash_escaped(self):
         assert escape_markdown_v2_url("https://x.io/a\\b") == "https://x.io/a\\\\b"
+
+
+class TestUrlHost:
+    def test_host_from_url(self):
+        assert url_host("https://nexign.ktalk.ru/BSS_Project_Status") == "nexign.ktalk.ru"
+        assert url_host("https://trueconf.nexign.com/r/42?x=1") == "trueconf.nexign.com"
+
+    def test_www_stripped(self):
+        assert url_host("https://www.example.com/x") == "example.com"
+
+    def test_no_host_returns_none(self):
+        assert url_host("not a url") is None
+        assert url_host("nexign.ktalk.ru/x") is None  # scheme-less → no host parsed
 
 
 class TestExtractUrl:
